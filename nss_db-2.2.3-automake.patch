@@ -1,0 +1,17 @@
+Automake doesn't know how to compile a single file both with and without
+libtool.  So fake it.
+--- nss_db-2.2.3/src/Makefile.am	2003-12-02 16:21:00.000000000 -0500
++++ nss_db-2.2.3/src/Makefile.am	2003-12-02 16:20:55.000000000 -0500
+@@ -27,8 +27,11 @@
+ libnss_db_la_LIBADD = @DB_LIBS@ -lnss_files
+ 
+ bin_PROGRAMS = makedb
+-makedb_SOURCES = makedb.c db-compat.c
++makedb_SOURCES = makedb.c db-compat-copy-makedb.c
+ makedb_LDADD = @DB_LIBS@ @INTLLIBS@
++db-compat-copy-makedb.c: db-compat.c
++	cp $^ $@
++	chmod -w $@
+ 
+ # To mimmick the old glibc installation as closely as possible, we
+ # shuffle the installed library and the links to it around a bit,

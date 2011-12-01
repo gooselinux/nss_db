@@ -1,0 +1,13 @@
+Don't mess around with the shared libraries which were installed until after
+they're installed.  Otherwise we fail at "rm".
+--- nss_db-2.2/Makefile.am	2005-09-28 11:41:56.000000000 -0400
++++ nss_db-2.2/Makefile.am	2005-09-28 11:41:57.000000000 -0400
+@@ -36,7 +36,7 @@
+ # To mimmick the old glibc installation as closely as possible, we
+ # shuffle the installed library and the links to it around a bit,
+ # removing all traces from libtool in the process.
+-install-data-local:
++install-data-hook:
+ 	$(mkinstalldirs) $(DESTDIR)$(libdir)
+ 	rm $(DESTDIR)$(slibdir)/libnss_db.la
+ 	rm $(DESTDIR)$(slibdir)/libnss_db.so

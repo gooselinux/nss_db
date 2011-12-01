@@ -1,0 +1,14 @@
+Avoid macro expansion if open() is a macro.
+
+diff -up nss_db-2.2/db-compat.c nss_db-2.2/db-compat.c
+--- nss_db-2.2/db-compat.c	2007-08-14 10:05:07.000000000 -0400
++++ nss_db-2.2/db-compat.c	2007-08-14 10:05:09.000000000 -0400
+@@ -39,7 +39,7 @@ db_open (const char *file, DBTYPE type, 
+   if (err)
+     return err;
+ 
+-  err = db->open (db, NULL, file, NULL, type, flags, mode);
++  err = (db->open) (db, NULL, file, NULL, type, flags, mode);
+   if (err)
+     {
+       db->close (db, 0);

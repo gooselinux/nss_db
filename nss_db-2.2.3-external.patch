@@ -1,0 +1,276 @@
+nss_db is now external to libc, so it doesn't get to use internal interfaces.
+
+--- nss_db-2.2.3/src/Makefile.am	2010-01-25 14:11:27.000000000 -0500
++++ nss_db-2.2.3/src/Makefile.am	2010-01-25 14:11:41.000000000 -0500
+@@ -11,7 +11,7 @@
+ 
+ noinst_HEADERS = db-compat.h netgroup.h nss_db.h
+ 
+-INCLUDES = @DB_CFLAGS@ -D_LIBC -D_GNU_SOURCE \
++INCLUDES = @DB_CFLAGS@ -D_GNU_SOURCE \
+ 	-I../intl -DLOCALEDIR=\"$(localedir)\"
+ 
+ EXTRA_DIST = libnss_db.map
+--- nss_db-2.2.3/src/db-XXX.c	Wed Aug  9 09:46:39 2000
++++ nss_db-2.2.3/src/db-XXX.c	Tue Apr  2 15:27:03 2002
+@@ -21,11 +21,10 @@
+ #include <ctype.h>
+ #include <db.h>
+ #include <netdb.h>
++#include <pthread.h>
+ #include <stdio.h>
+ #include <string.h>
+ 
+-#include <bits/libc-lock.h>
+-
+ #include "nss_db.h"
+ 
+ /* These symbols are defined by the including source file:
+@@ -53,7 +52,7 @@
+ #endif
+ 
+ /* Locks the static variables in this file.  */
+-__libc_lock_define_initialized (static, lock)
++static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+ /* Maintenance of the shared handle open on the database.  */
+ 
+@@ -68,7 +67,7 @@
+ {
+   enum nss_status status;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   status = internal_setent (DBFILE, &db);
+ 
+@@ -78,7 +77,7 @@
+   /* Reset the sequential index.  */
+   entidx = 0;
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+@@ -88,14 +87,14 @@
+ enum nss_status
+ CONCAT(_nss_db_end,ENTNAME) (void)
+ {
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   internal_endent (&db);
+ 
+   /* Reset STAYOPEN flag.  */
+   keep_db = 0;
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return NSS_STATUS_SUCCESS;
+ }
+@@ -227,10 +226,10 @@
+   key.data = alloca (size);						      \
+   key.size = KEYPRINTF keypattern;					      \
+   key.flags = 0;							      \
+-  __libc_lock_lock (lock);						      \
++  pthread_mutex_lock (&lock);						      \
+   status = lookup (&key, result, buffer, buflen, errnop H_ERRNO_ARG	      \
+ 		   EXTRA_ARGS_VALUE);					      \
+-  __libc_lock_unlock (lock);						      \
++  pthread_mutex_unlock (&lock);					      \
+   return status;							      \
+ }
+ 
+@@ -249,7 +248,7 @@
+   char buf[20];
+   DBT key;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   /* Loop until we find a valid entry or hit EOF.  See above for the
+      special meaning of the status value.  */
+@@ -270,7 +269,7 @@
+     }
+   while (status == NSS_STATUS_RETURN);
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+diff -uNr nss_db-2.2.3/src/db-alias.c nss_db-2.2.3/src/db-alias.c
+--- nss_db-2.2.3/src/db-alias.c	Tue Aug  8 12:47:33 2000
++++ nss_db-2.2.3/src/db-alias.c	Tue Apr  2 15:25:37 2002
+@@ -23,15 +23,14 @@
+ #include <ctype.h>
+ #include <errno.h>
+ #include <paths.h>
++#include <pthread.h>
+ #include <stdio.h>
+ #include <string.h>
+ 
+-#include <bits/libc-lock.h>
+-
+ #include "nss_db.h"
+ 
+ /* Locks the static variables in this file.  */
+-__libc_lock_define_initialized (static, lock)
++static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+ /* Maintenance of the shared handle open on the database.  */
+ 
+@@ -46,7 +45,7 @@
+ {
+   enum nss_status status;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   status = internal_setent (_PATH_VARDB "aliases.db", &db);
+ 
+@@ -57,7 +56,7 @@
+   /* Reset the sequential index.  */
+   entidx = 0;
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+@@ -67,14 +66,14 @@
+ enum nss_status
+ _nss_db_endaliasent (void)
+ {
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   internal_endent (&db);
+ 
+   /* Reset STAYOPEN flag.  */
+   keep_db = 0;
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return NSS_STATUS_SUCCESS;
+ }
+@@ -180,14 +179,14 @@
+   char buf[20];
+   DBT key;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+   key.size = snprintf (key.data = buf, sizeof buf, "0%u", entidx++);
+   key.flags = 0;
+   status = lookup (&key, result, buffer, buflen, errnop);
+   if (status == NSS_STATUS_TRYAGAIN && *errnop == ERANGE)
+     /* Give the user a chance to get the same entry with a larger buffer.  */
+     --entidx;
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+@@ -207,9 +206,9 @@
+   memcpy (&((char *) key.data)[1], name, key.size - 1);
+   key.flags = 0;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+   status = lookup (&key, result, buffer, buflen, errnop);
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+diff -uNr nss_db-2.2.3/src/db-netgrp.c nss_db-2.2.3/src/db-netgrp.c
+--- nss_db-2.2.3/src/db-netgrp.c	Tue Aug  8 13:05:01 2000
++++ nss_db-2.2.3/src/db-netgrp.c	Tue Apr  2 15:26:03 2002
+@@ -21,8 +21,8 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <netgroup.h>
++#include <pthread.h>
+ #include <string.h>
+-#include <bits/libc-lock.h>
+ #include <paths.h>
+ 
+ #include "nss_db.h"
+@@ -32,7 +32,7 @@
+ 
+ 
+ /* Locks the static variables in this file.  */
+-__libc_lock_define_initialized (static, lock)
++static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+ /* Maintenance of the shared handle open on the database.  */
+ static DB *db;
+@@ -44,7 +44,7 @@
+ {
+   enum nss_status status;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   status = internal_setent (DBFILE, &db);
+ 
+@@ -60,7 +60,7 @@
+ 	cursor = entry = value.data;
+     }
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ 
+@@ -70,11 +70,11 @@
+ enum nss_status
+ _nss_db_endnetgrent (void)
+ {
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   internal_endent (&db);
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return NSS_STATUS_SUCCESS;
+ }
+@@ -91,11 +91,11 @@
+ {
+   int status;
+ 
+-  __libc_lock_lock (lock);
++  pthread_mutex_lock (&lock);
+ 
+   status = _nss_netgroup_parseline (&cursor, result, buffer, buflen, errnop);
+ 
+-  __libc_lock_unlock (lock);
++  pthread_mutex_unlock (&lock);
+ 
+   return status;
+ }
+--- nss_db-2.2.3/src/db-open.c	Mon Apr 15 10:45:12 2002
++++ nss_db-2.2.3/src/db-open.c	Mon Apr 15 10:45:28 2002
+@@ -58,7 +58,7 @@
+   if (err != 0)
+     {
+       if (err > 0)
+-	__set_errno (err);
++	errno = err;
+       return NSS_STATUS_UNAVAIL;
+     }
+ 
+@@ -75,7 +75,7 @@
+  fail:
+   db->close (db, 0);
+   if (err > 0)
+-    __set_errno (err);
++    errno = err;
+   return NSS_STATUS_UNAVAIL;
+ }
+ 

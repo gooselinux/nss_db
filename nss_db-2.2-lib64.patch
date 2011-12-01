@@ -1,0 +1,27 @@
+Teach configure about other 64-bit multilib systems (ia64,ppc64,s390x,x86_64).
+
+--- nss_db-2.2/configure.in	2014-06-14 12:59:53.000000000 -0400
++++ nss_db-2.2/configure.in	2014-06-14 12:59:47.000000000 -0400
+@@ -118,15 +118,18 @@
+   # files.  I.e., when the installation prefix is "/usr" we have to place
+   # shared library objects on the root partition in /lib.
+   if test "$prefix" = "/usr" -o "$prefix" = "/usr"; then
+-    # 64bit libraries on sparc go to /lib64 and not /lib
+-    if test "$host_cpu" = "sparc64"; then
++    # 64bit libraries on multilib systems go to /lib64 and not /lib
++    case "$host_cpu" in
++    powerpc64|sparc64|s390x|x86_64)
+       slibdir="/lib64"
+       if test "$libdir" = '${exec_prefix}/lib'; then
+         libdir='${exec_prefix}/lib64';
+       fi
+-    else
++      ;;
++    *)
+       slibdir="/lib"
+-    fi
++      ;;
++    esac
+   fi
+   ;;
+ esac

@@ -1,0 +1,16 @@
+Set errno to ENOENT so that we return it as an error in case a particular
+lookup fails.  The glibc NSS layer checks our return code and kicks errno
+back to the caller.  If we don't set it, anywhere, on error, then the
+previous error is returned.  That can be ERANGE, which would cause NSS to
+allocate a larger buffer and try again.  For no-such-key errors, this was
+exactly what was happening, and it could result in an out-of-memory error.
+--- nss_db-2.2/db-XXX.c	Tue Apr 26 13:07:23 2005
++++ nss_db-2.2/db-XXX.c	Tue Apr 26 13:07:18 2005
+@@ -122,6 +122,7 @@
+     }
+ 
+   /* Succeed iff it matches a value that parses correctly.  */
++  *errnop = ENOENT;
+   value.flags = 0;
+   err = db->get (db, NULL, key, &value, 0);
+   if (err)

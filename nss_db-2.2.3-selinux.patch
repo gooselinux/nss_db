@@ -1,0 +1,161 @@
+Set the SELinux file creation context when opening databases for write access.
+Note that this does *not* change the context of existing files.
+
+--- nss_db-2.2/configure.in	2004-10-20 13:41:04.301436568 -0400
++++ nss_db-2.2/configure.in	2004-10-20 13:51:52.913832496 -0400
+@@ -73,6 +73,43 @@
+ *** Unsupported Berkeley DB version detected.])
+ fi
+ 
++AC_ARG_WITH(selinux,AC_HELP_STRING(--with-selinux,[enable SELinux support [[default=auto]]]),
++selinux=$withval,
++selinux=auto)
++
++libsave="$LIBS"
++if test x$selinux != xno ; then
++  AC_CHECK_HEADERS(selinux/selinux.h)
++  if test x$ac_cv_header_selinux_selinux_h = xno ; then
++    if test x$selinux = xyes ; then
++      AC_MSG_ERROR([SELinux not detected])
++    else
++      AC_MSG_WARN([SELinux not detected])
++      selinux=no
++    fi
++  fi
++fi
++
++if test x$selinux != xno ; then
++  AC_CHECK_FUNC(setfscreatecon,,[AC_CHECK_LIB(selinux,setfscreatecon)])
++  if test x$ac_cv_func_setfscreatecon = xno ; then
++    if test x$ac_cv_lib_selinux_setfscreatecon = xno ; then
++      if test x$selinux = xyes ; then
++        AC_MSG_ERROR([SELinux not detected])
++      else
++        AC_MSG_WARN([SELinux not detected])
++        selinux=no
++      fi
++    fi
++  fi
++fi
++if test x$selinux != xno ; then
++  AC_DEFINE(SELINUX,1,[Define to have makedb set SELinux file contexts on created files.])
++fi
++
++SELINUX_LIBS="$LIBS"
++LIBS="$libsave"
++
+ AC_CANONICAL_HOST
+ slibdir=NONE
+ case "$host" in
+@@ -100,6 +137,7 @@
+ 
+ AC_SUBST(DB_CFLAGS)
+ AC_SUBST(DB_LIBS)
++AC_SUBST(SELINUX_LIBS)
+ AC_SUBST(slibdir)
+ 
+ dnl Internationalization macros.
+--- nss_db-2.2.3/src/Makefile.am	2004-10-20 13:47:22.207986040 -0400
++++ nss_db-2.2.3/src/Makefile.am	2004-10-20 13:48:46.242210896 -0400
+@@ -28,7 +28,7 @@
+ 
+ bin_PROGRAMS = makedb
+ makedb_SOURCES = makedb.c db-compat-copy-makedb.c
+-makedb_LDADD = @DB_LIBS@ @INTLLIBS@
++makedb_LDADD = @DB_LIBS@ @SELINUX_LIBS@ @INTLLIBS@
+ db-compat-copy-makedb.c: db-compat.c
+ 	cp $^ $@
+ 	chmod -w $@
+--- nss_db-2.2.3/src/makedb.c	2004-10-20 13:52:02.814327392 -0400
++++ nss_db-2.2.3/src/makedb.c	2004-10-20 14:06:07.605899552 -0400
+@@ -32,6 +32,10 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ 
++#ifdef SELINUX
++#include <selinux/selinux.h>
++#endif
++
+ #include "db-compat.h"
+ 
+ #define N_(Text) Text
+@@ -95,6 +99,12 @@
+ 			  int to_lowercase, int be_quiet);
+ static int print_database (DB *db);
+ 
++#ifdef SELINUX
++/* Set the SELinux file creation context for the given file. */
++static void set_file_creation_context (const char *outname, mode_t mode);
++#else
++#define set_file_creation_context(_outname,_mode)
++#endif
+ 
+ int
+ main (int argc, char *argv[])
+@@ -176,8 +186,10 @@
+ 
+   /* Open output file.  This must not be standard output so we don't
+      handle "-" and "/dev/stdout" special.  */
++  set_file_creation_context (output_name, mode);
+   status = db_open (output_name, DB_BTREE, DB_CREATE | DB_TRUNCATE, mode,
+ 		    NULL, NULL, &db_file);
++  set_file_creation_context (NULL, 0);
+   if (status)
+     error (EXIT_FAILURE, 0, gettext ("cannot open output file `%s': %s"),
+ 	   output_name, db_strerror (status));
+@@ -388,3 +400,55 @@
+ 
+   return EXIT_SUCCESS;
+ }
++
++
++#ifdef SELINUX
++static void
++set_file_creation_context (const char *outname, mode_t mode)
++{
++  static int enabled = -1, enforcing = -1;
++  security_context_t ctx;
++  /* Handle the "reset the context" case. */
++  if (outname == NULL)
++    {
++      setfscreatecon (NULL);
++      return;
++    }
++  /* Check if SELinux is enabled, and remember. */
++  if (enabled == -1)
++    {
++      enabled = is_selinux_enabled ();
++    }
++  if (enabled == 0)
++    {
++      return;
++    }
++  /* Check if SELinux is enforcing, and remember. */
++  if (enforcing == -1)
++    {
++      enforcing = security_getenforce();
++    }
++  /* Determine the context which the file should have. */
++  ctx = NULL;
++  if ((matchpathcon (outname, S_IFREG | mode, &ctx) == 0) &&
++      (ctx != NULL))
++    {
++      if (setfscreatecon (ctx) != 0)
++        {
++          if (enforcing)
++            {
++              error (EXIT_FAILURE, 0,
++                     gettext ("cannot set file creation context for `%s'"),
++                     outname);
++            }
++          else
++            {
++              error (0, 0,
++                     gettext ("cannot set file creation context for `%s'"),
++                     outname);
++            }
++        }
++      freecon (ctx);
++    }
++}
++#endif

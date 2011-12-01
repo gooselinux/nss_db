@@ -1,0 +1,19 @@
+Use AC_TRY_LINK to correctly detect db_version in a copy of libdb which has
+been built with the --with-uniquename flag.
+--- nss_db-2.2/configure.in	2003-12-02 16:22:42.000000000 -0500
++++ nss_db-2.2/configure.in	2003-12-02 16:22:37.000000000 -0500
+@@ -43,8 +43,12 @@
+ AC_CHECK_HEADER(db.h,, AC_MSG_ERROR([
+ *** Could not find Berkeley DB headers.]))
+ 
+-AC_CHECK_LIB(db, db_version,, AC_MSG_ERROR([
+-*** Could not find Berkeley DB library.]))
++AC_CHECK_LIB(db, db_version,,[
++libsave="$LIBS"
++LIBS="$LIBS $DB_LIBS -ldb"
++AC_MSG_CHECKING([for db_version in -ldb using the linker])
++AC_TRY_LINK([#include <db.h>],[db_version(0,0,0);],[libsave="$libsave -ldb";AC_MSG_RESULT([yes])],[AC_MSG_RESULT([no]);AC_MSG_ERROR([*** Could not find Berkeley DB library.])])
++LIBS="$libsave"])
+ 
+ AC_CACHE_CHECK([Berkeley DB version], nss_db_cv_db_version,
+   [AC_TRY_CPP(

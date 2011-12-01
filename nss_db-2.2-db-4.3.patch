@@ -1,0 +1,12 @@
+API change!  Yee-ha!
+--- nss_db-2.2/db-compat.c	2005-02-22 11:20:08.982739304 -0500
++++ nss_db-2.2/db-compat.c	2005-02-22 11:20:15.872839511 -0500
+@@ -39,7 +39,7 @@
+   if (err)
+     return err;
+ 
+-  err = db->open (db, file, NULL, type, flags, mode);
++  err = db->open (db, NULL, file, NULL, type, flags, mode);
+   if (err)
+     {
+       db->close (db, 0);

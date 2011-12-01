@@ -1,0 +1,50 @@
+--- nss_db-2.2/makedb.c	2008-08-04 14:21:06.000000000 -0700
++++ nss_db-2.2/makedb.c	2008-08-04 14:24:08.000000000 -0700
+@@ -31,6 +31,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
++#include <unistd.h>
+ 
+ #ifdef SELINUX
+ #include <selinux/selinux.h>
+@@ -110,6 +111,7 @@
+ main (int argc, char *argv[])
+ {
+   const char *input_name;
++  char *output_name_temp;
+   FILE *input_file;
+   DB *db_file;
+   int status;
+@@ -184,10 +186,17 @@
+ 	mode = st.st_mode & ACCESSPERMS;
+     }
+ 
++  /* Get name for tempfile using output_name and pid */
++  status = asprintf(&output_name_temp,"%s.%s.%d",output_name,"tmp",getpid());
++  if ( status < 0 )
++  {
++     error (EXIT_FAILURE, 0, gettext ("cannot generate temp file name"));
++  }  
++
+   /* Open output file.  This must not be standard output so we don't
+      handle "-" and "/dev/stdout" special.  */
+   set_file_creation_context (output_name, mode);
+-  status = db_open (output_name, DB_BTREE, DB_CREATE | DB_TRUNCATE, mode,
++  status = db_open (output_name_temp, DB_BTREE, DB_CREATE | DB_TRUNCATE, mode,
+ 		    NULL, NULL, &db_file);
+   set_file_creation_context (NULL, 0);
+   if (status)
+@@ -203,6 +212,12 @@
+     fclose (input_file);
+   db_file->close (db_file, 0);
+ 
++  /* all done, move temp file over real file */
++  status = rename(output_name_temp,output_name);
++  if ( status < 0 )
++    error (EXIT_FAILURE, errno, gettext ("cannot rename `%s' to `%s'"),
++           output_name_temp, output_name);
++
+   return status;
+ }
+ 
